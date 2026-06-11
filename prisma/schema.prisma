@@ -18,6 +18,7 @@ model Form {
   description String?
   createdAt   DateTime @default(now())
   fields      Field[]
+  submissions Submission[]
 }
 
 model Field {
@@ -33,6 +34,7 @@ model Field {
 model Submission {
   id        String   @id @default(cuid())
   formId    String
+  form      Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   answers   Answer[]
 }
