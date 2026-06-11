@@ -3,7 +3,7 @@
 import { generateText, NoObjectGeneratedError, Output } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@/app/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { getModel } from "@/lib/ai";
 
 const textFieldSchema = z.object({
