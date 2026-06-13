@@ -47,6 +47,8 @@ const generatedFormSchema = z.object({
   fields: z.array(formFieldSchema).min(1, "At least one field is required."),
 });
 
+const rateMap = new Map<string, number>();
+
 export type GenerateFormActionResult =
   | { success: true; formId: string }
   | { success: false; error: string };
@@ -54,6 +56,20 @@ export type GenerateFormActionResult =
 export async function generateFormAction(
   prompt: string,
 ): Promise<GenerateFormActionResult> {
+
+  // A simple rate limit
+  const userKey = 'global';
+  const last = rateMap.get(userKey);
+  // Not allow request a form within 15s
+  if (last && Date.now() - last < 15000) {
+    return {
+      success: false,
+      error: 'Too many requests. Please wait a few seconds.'
+    };
+  }
+  rateMap.set(userKey, Date.now());
+
+
   const trimmedPrompt = prompt.trim();
 
   if (!trimmedPrompt) {
