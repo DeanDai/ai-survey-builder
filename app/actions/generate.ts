@@ -119,7 +119,7 @@ export async function generateFormAction(
 
     return {
       success: true,
-      formId: cached.result.formId,
+      formId: (cached.result as any).formId,
     };
   }
 
