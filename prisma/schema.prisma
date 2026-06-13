@@ -46,3 +46,17 @@ model Answer {
   fieldId      String
   value        String     // 用户填写的答案
 }
+
+model AICache {
+  id        String   @id
+  prompt    String
+  result    Json
+  createdAt DateTime @default(now())
+}
+
+model UsageLog {
+  id        String   @id @default(cuid())
+  type      String
+  model     String?
+  createdAt DateTime @default(now())
+}

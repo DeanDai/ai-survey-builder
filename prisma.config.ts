@@ -1,12 +1,14 @@
 import "dotenv/config";
-import { defineConfig } from "prisma/config";
+import { defineConfig, env } from "prisma/config";
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
+  // Prisma CLI (db push, migrate, etc.) needs a direct/session connection.
+  // Do not use the Supabase transaction pooler (port 6543) here — it hangs silently.
   datasource: {
-    url: process.env.DATABASE_URL,
+    url: env("DIRECT_URL"),
   },
 });

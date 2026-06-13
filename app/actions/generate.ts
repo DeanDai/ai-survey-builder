@@ -5,7 +5,12 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { getModel } from "@/lib/ai";
+import crypto from "crypto";
+import { headers } from "next/headers";
 
+/* =========================
+   SCHEMA
+========================= */
 const textFieldSchema = z.object({
     type: z.literal("TEXT"),
     label: z.string().min(1),
@@ -47,18 +52,43 @@ const generatedFormSchema = z.object({
   fields: z.array(formFieldSchema).min(1, "At least one field is required."),
 });
 
+/* =========================
+   RATE LIMIT
+========================= */
 const rateMap = new Map<string, number>();
+
+/* =========================
+   CACHE HASH
+========================= */
+function hashPrompt(prompt: string) {
+  return crypto.createHash("sha256").update(prompt).digest("hex");
+}
 
 export type GenerateFormActionResult =
   | { success: true; formId: string }
   | { success: false; error: string };
 
+/* =========================
+  MAIN ACTION
+========================= */
 export async function generateFormAction(
   prompt: string,
 ): Promise<GenerateFormActionResult> {
 
+  // Trim user's prompt
+  const trimmedPrompt = prompt.trim();
+  // Show error if prompt is empty
+  if (!trimmedPrompt) {
+    return { success: false, error: "Prompt cannot be empty." };
+  }
+
+  /* =========================
+     RATE LIMIT
+  ========================= */
   // A simple rate limit
-  const userKey = 'global';
+  const h = await headers();
+  // Get info from x-forwarded-for and get the ip. If not found, user global instead
+  const userKey = h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "global";
   const last = rateMap.get(userKey);
   // Not allow request a form within 15s
   if (last && Date.now() - last < 15000) {
@@ -67,13 +97,30 @@ export async function generateFormAction(
       error: 'Too many requests. Please wait a few seconds.'
     };
   }
+  // Update time for this user
   rateMap.set(userKey, Date.now());
 
+  /* =========================
+     CACHE CHECK
+  ========================= */
+  const cacheKey = hashPrompt(trimmedPrompt);
 
-  const trimmedPrompt = prompt.trim();
+  const cached = await prisma.aICache.findUnique({
+    where: { id: cacheKey },
+  });
 
-  if (!trimmedPrompt) {
-    return { success: false, error: "Prompt cannot be empty." };
+  if (cached) {
+    await prisma.usageLog.create({
+      data: {
+        type: "CACHE_HIT",
+        model: process.env.AI_PROVIDER ?? "google",
+      },
+    });
+
+    return {
+      success: true,
+      formId: cached.result.formId,
+    };
   }
 
   const provider = process.env.AI_PROVIDER ?? "google";
@@ -91,6 +138,9 @@ export async function generateFormAction(
     };
   }
 
+  /* =========================
+    AI CALL
+  ========================= */
   try {
     const { output } = await generateText({
       model: getModel(),
@@ -135,6 +185,9 @@ export async function generateFormAction(
         prompt: trimmedPrompt,
     });
 
+    /* =========================
+       SAVE FORM
+    ========================= */
     const form = await prisma.form.create({
       data: {
         title: output.title,
@@ -147,6 +200,29 @@ export async function generateFormAction(
             options: field.options as Prisma.InputJsonValue
           })),
         },
+      },
+    });
+
+    /* =========================
+       SAVE CACHE
+    ========================= */
+    await prisma.aICache.create({
+      data: {
+        id: cacheKey,
+        prompt: trimmedPrompt,
+        result: {
+          formId: form.id,
+        } as any,
+      },
+    });
+
+    /* =========================
+       USAGE LOG
+    ========================= */
+    await prisma.usageLog.create({
+      data: {
+        type: "GENERATE_FORM",
+        model: process.env.AI_PROVIDER ?? "google",
       },
     });
 
